@@ -1,0 +1,11 @@
+{
+  "name": "promptturk",
+  "version": "1.0.0",
+  "description": "Türkiye'nin AI Prompt Platformu",
+  "main": "index.html",
+  "scripts": {
+    "start": "vercel dev"
+  },
+  "author": "Keybrother Technology",
+  "license": "MIT"
+}
