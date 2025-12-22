@@ -1,5 +1,5 @@
 export default async function handler(req, res) {
-    // 1. Ayarlar ve İzinler (CORS)
+    // 1. Ayarlar
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -9,52 +9,44 @@ export default async function handler(req, res) {
 
     try {
         const { category, categoryName, userRequest, targetAI } = req.body;
-        
-        // OpenAI Anahtarını Çekiyoruz
-        const OPENAI_KEY = process.env.OPENAI_API_KEY;
+        const GEMINI_KEY = process.env.GEMINI_API_KEY;
 
-        if (!OPENAI_KEY) {
-            throw new Error("Vercel ayarlarında OPENAI_API_KEY eksik!");
+        if (!GEMINI_KEY) {
+            throw new Error("Vercel ayarlarında GEMINI_API_KEY eksik!");
         }
 
-        // 2. EN SON MODEL: GPT-5.2'ye Bağlanıyoruz (Aralık 2025 Sürümü)
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        // 2. EN SON MODEL: Gemini 3 Flash (17 Aralık 2025 Çıkışlı)
+        // Eski 1.5 ve Pro modelleri kapandığı için sadece bu çalışır.
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash:generateContent?key=${GEMINI_KEY}`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${OPENAI_KEY}`
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                model: 'gpt-5.2', // <-- İŞTE EN SON MODEL BURASI
-                messages: [
-                    { 
-                        role: "system", 
-                        content: `Sen dünyanın en iyi prompt mühendisisin. Kullanıcı ${targetAI} kullanacak. Ona ${categoryName} kategorisinde, işini tek seferde görecek mükemmel bir prompt yaz.` 
-                    },
-                    { 
-                        role: "user", 
-                        content: `Kullanıcı İsteği: ${userRequest}\n\nSadece promptu yaz, başka hiçbir şey yazma.` 
-                    }
-                ],
-                temperature: 0.7
+                contents: [{
+                    parts: [{ 
+                        text: `Sen 2025 yılının en gelişmiş prompt mühendisisin. Kullanıcı ${targetAI} kullanacak. Ona ${categoryName} kategorisinde mükemmel bir prompt yaz.
+                        
+                        Kullanıcı İsteği: ${userRequest}
+                        
+                        Sadece promptu yaz, açıklama yapma.` 
+                    }]
+                }]
             })
         });
 
         const data = await response.json();
 
         // Hata yakalama
-        if (data.error) {
-            // Eğer hesabın henüz 5.2'ye erişemiyorsa (nadir durum), yedeğe düşürelim
-            throw new Error("OpenAI Hatası: " + data.error.message);
+        if (!response.ok) {
+            throw new Error(data.error?.message || "Gemini 3 Hatası");
         }
 
         // 3. Sonucu siteye gönder
-        const resultText = data.choices[0].message.content;
-
+        const resultText = data.candidates[0].content.parts[0].text;
+        
         return res.status(200).json({ 
             prompt: resultText, 
             result: resultText, 
-            provider: 'openai-gpt-5.2' 
+            provider: 'gemini-3-flash' 
         });
 
     } catch (error) {
