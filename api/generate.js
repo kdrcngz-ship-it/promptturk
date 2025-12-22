@@ -1,5 +1,5 @@
 export default async function handler(req, res) {
-    // 1. Ayarlar
+    // 1. İzinler ve Ayarlar
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -11,45 +11,45 @@ export default async function handler(req, res) {
         const { category, categoryName, userRequest, targetAI } = req.body;
         const GEMINI_KEY = process.env.GEMINI_API_KEY;
 
-        // 2. Anahtar Kontrolü (Hata varsa direkt ekrana basacak)
         if (!GEMINI_KEY) {
-            throw new Error("Vercel'de 'GEMINI_API_KEY' bulunamadı! Ayarlara eklememişsin.");
+            throw new Error("Vercel ayarlarında API Anahtarı bulunamadı.");
         }
 
-        // 3. Google'a Bağlan
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`, {
+        // 2. DÜZELTİLEN KISIM: 'gemini-1.5-flash' yerine garanti çalışan 'gemini-pro' kullanıyoruz.
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_KEY}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 contents: [{
-                    parts: [{ text: `Sen bir prompt uzmanısın. ${categoryName} için ${targetAI} promptu yaz. İstek: ${userRequest}` }]
+                    parts: [{ 
+                        text: `Sen uzman bir prompt mühendisisin. Kullanıcının isteğine göre ${targetAI} yapay zekası için ${categoryName} kategorisinde profesyonel bir prompt hazırla.
+                        
+                        Kullanıcı İsteği: ${userRequest}
+                        
+                        Sadece oluşturduğun promptu yaz, başka açıklama yapma.` 
+                    }]
                 }]
             })
         });
 
         const data = await response.json();
 
-        // 4. Google Hata Verdiyse Yakala
+        // Google hata verirse yakala
         if (!response.ok) {
-            throw new Error("Google Hatası: " + (data.error?.message || "Bilinmeyen hata"));
+            throw new Error(data.error?.message || "Google API hatası");
         }
 
-        // 5. Başarılı Sonuç
+        // 3. Sonucu siteye gönder
         const resultText = data.candidates[0].content.parts[0].text;
         
-        // Hem senin eski koduna hem yeni tasarıma uyumlu cevap
         return res.status(200).json({ 
-            prompt: resultText, 
-            result: resultText,
+            prompt: resultText, // Senin tasarımın bunu bekliyor
+            result: resultText, 
             provider: 'gemini' 
         });
 
     } catch (error) {
-        // HATA OLUŞURSA LOGLARA DEĞİL, DİREKT SİTEYE GÖNDER
-        return res.status(200).json({ 
-            prompt: "⚠️ HATA OLUŞTU (Bunu bana at): " + error.message,
-            result: "⚠️ HATA OLUŞTU (Bunu bana at): " + error.message,
-            provider: 'error'
-        });
+        console.error("Hata:", error);
+        return res.status(500).json({ error: "Sistem Hatası: " + error.message });
     }
 }
