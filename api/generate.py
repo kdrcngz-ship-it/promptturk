@@ -1,7 +1,6 @@
 from http.server import BaseHTTPRequestHandler
 import json
-import urllib.request
-import os
+from openai import OpenAI
 
 class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
@@ -18,10 +17,11 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
 
         try:
-            # SENİN API KEY
-            api_key = "AIzaSyC4P18pAnup5IC6NIbBgv1OT_5kqc5rQaE"
-            
-            # OKU
+            # SENİN VERDİĞİN OPENAI ANAHTARI
+            api_key = "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"
+
+            client = OpenAI(api_key=api_key)
+
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
             data = json.loads(post_data.decode('utf-8'))
@@ -30,39 +30,21 @@ class handler(BaseHTTPRequestHandler):
             category = data.get('category', 'Genel')
             language = data.get('language', 'tr')
 
-            # PROMPT HAZIRLA
-            final_prompt = f"""
-            Sen uzman bir Prompt Mühendisisin.
-            Kullanıcı İsteği: {user_req}
-            Kategori: {category}
-            Hedef Dil: {language}
-            
-            Görevin: Bu isteği, TAMAMEN {language} dilinde profesyonel bir yapay zeka promptuna dönüştür.
-            Sadece promptu yaz, açıklama yapma.
-            """
+            # GPT'ye giden emir
+            system_msg = f"Sen uzman bir Prompt Mühendisisin. Görevin, kullanıcı isteğini TAMAMEN {language} dilinde profesyonel bir yapay zeka promptuna dönüştürmektir. Sadece promptu yaz, açıklama yapma."
+            user_msg = f"Kategori: {category}. İstek: {user_req}"
 
-            # BURASI ÖNEMLİ: Kütüphane kullanmadan direkt Google'ın kapısını çalıyoruz.
-            # Model: gemini-1.5-flash (En hızlı ve kotası bol olan)
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-            
-            headers = {'Content-Type': 'application/json'}
-            body = {
-                "contents": [{
-                    "parts": [{"text": final_prompt}]
-                }]
-            }
-            
-            # İsteği gönder (Python'un kendi aracıyla)
-            req = urllib.request.Request(url, data=json.dumps(body).encode('utf-8'), headers=headers, method='POST')
-            
-            with urllib.request.urlopen(req) as response:
-                res_body = response.read()
-                res_json = json.loads(res_body)
-                # Cevabı ayıkla
-                generated_text = res_json['candidates'][0]['content']['parts'][0]['text']
-                
-                self.wfile.write(json.dumps({"prompt": generated_text}).encode('utf-8'))
+            # MODEL: gpt-4o-mini (Hızlı ve Güçlü)
+            completion = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": user_msg}
+                ]
+            )
+
+            response_text = completion.choices[0].message.content
+            self.wfile.write(json.dumps({"prompt": response_text}).encode('utf-8'))
 
         except Exception as e:
-            # Hata olursa ne olduğunu görelim
             self.wfile.write(json.dumps({"error": f"Hata: {str(e)}"}).encode('utf-8'))
