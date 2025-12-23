@@ -17,10 +17,14 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
 
         try:
-            # SENİN YENİ ANAHTARIN (Kodun içine gömüldü)
-            api_key = "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"
+            # SENİN DEEPSEEK ANAHTARIN
+            api_key = "sk-3bf32bb26705489cb986fb074d7525a6"
 
-            client = OpenAI(api_key=api_key)
+            # DeepSeek Bağlantısı (OpenAI kütüphanesi ile)
+            client = OpenAI(
+                api_key=api_key,
+                base_url="https://api.deepseek.com"
+            )
 
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
@@ -33,13 +37,14 @@ class handler(BaseHTTPRequestHandler):
             system_msg = f"Sen uzman bir Prompt Mühendisisin. Görevin, kullanıcı isteğini TAMAMEN {language} dilinde profesyonel bir yapay zeka promptuna dönüştürmektir. Sadece promptu yaz, açıklama yapma."
             user_msg = f"Kategori: {category}. İstek: {user_req}"
 
-            # GPT-4o-mini Modeli (Hızlı ve Zeki)
+            # Model: deepseek-chat
             completion = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="deepseek-chat",
                 messages=[
                     {"role": "system", "content": system_msg},
                     {"role": "user", "content": user_msg}
-                ]
+                ],
+                stream=False
             )
 
             response_text = completion.choices[0].message.content
