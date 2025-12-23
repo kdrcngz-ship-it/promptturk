@@ -1,172 +1,180 @@
 export default async function handler(req, res) {
-    // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    
+    if (req.method === 'OPTIONS') return res.status(200).end();
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+    
+    const GEMINI_KEY = process.env.GEMINI_API_KEY;
+    const DEEPSEEK_KEY = process.env.DEEPSEEK_API_KEY;
+    const OPENAI_KEY = process.env.OPENAI_API_KEY;
+    
+    try {
+        const { category, categoryName, userRequest, targetAI, language, fileContent } = req.body;
+        
+        if (!GEMINI_KEY) throw new Error("API Anahtarı eksik!");
+        
+        const lang = language || 'tr';
+        const langText = lang === 'en' ? 'Write the prompt in English.' : 'Promptu Türkçe yaz.';
+        
+        const fileContext = fileContent ? `\n\nKullanıcının eklediği dosya/içerik bilgisi: ${fileContent}` : '';
+        
+        const engineeringPrompt = `
+GÖREVİN: Sen dünya çapında ünlü, 10+ yıl deneyimli bir PROMPT MÜHENDİSİSİN.
 
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
-
-    if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Method not allowed' });
-    }
-
-    const { category, categoryName, userRequest, targetAI, language, fileContent } = req.body;
-
-    if (!category || !userRequest || !targetAI) {
-        return res.status(400).json({ error: 'Eksik parametreler' });
-    }
-
-    const lang = language || 'tr';
-    const langInstruction = lang === 'en' 
-        ? 'Write the prompt in English.'
-        : 'Promptu Türkçe yaz.';
-
-    const fileContext = fileContent 
-        ? `\n\nKullanıcının yüklediği dosya içeriği/açıklaması:\n${fileContent}\n`
-        : '';
-
-    const systemPrompt = `Sen dünya çapında tanınmış, 10+ yıl deneyimli bir prompt mühendisisin. Fortune 500 şirketlerine danışmanlık yapıyorsun. Kullanıcının isteğine göre ${targetAI} için MÜKEMMEL, PROFESYONEL ve SON DERECE ETKİLİ promptlar oluşturuyorsun.
-
-## GÖREV
-Kullanıcının "${categoryName}" kategorisindeki isteği için ${targetAI}'a özel optimize edilmiş bir prompt oluştur.
-
-## PROMPT OLUŞTURMA KURALLARI
-
-### 1. YAPI (Bu sırayla oluştur)
-- **🎭 ROL TANIMI**: AI'ın üstleneceği uzman persona (detaylı, inandırıcı)
-- **🎯 GÖREV**: Net, spesifik, ölçülebilir hedef
-- **📋 BAĞLAM**: Kullanıcının durumu, hedef kitle, amaç
-- **📝 ADIM ADIM TALİMATLAR**: Numaralandırılmış, açık direktifler
-- **⚠️ KISITLAMALAR**: Yapılmaması gerekenler, dikkat edilecekler
-- **📤 ÇIKTI FORMATI**: Beklenen format, uzunluk, stil
-- **💡 ÖRNEK** (gerekirse): Beklenen çıktının mini örneği
-
-### 2. KALİTE STANDARTLARI
-- Belirsiz ifadeler YASAK ("iyi", "güzel", "uygun" gibi)
-- Her talimat SPESİFİK ve ÖLÇÜLÜR olmalı
-- Hedef kitleye UYGUN ton ve dil
-- ${targetAI}'ın güçlü yönlerini KULLAN
-- Gereksiz uzunluk YASAK, öz ve etkili ol
-
-### 3. ${targetAI.toUpperCase()} OPTİMİZASYONU
-${targetAI === 'claude' ? `- Yapılandırılmış, detaylı talimatlar ver
-- XML tag'leri kullanabilirsin
-- Düşünce zinciri (chain of thought) iste
-- Belirsizliklerde soru sormasını söyle` : ''}
-${targetAI === 'chatgpt' ? `- Doğal, akıcı dil kullan
-- Markdown formatlamayı öner
-- Yaratıcı ve esnek yaklaşım
-- Örneklerle zenginleştir` : ''}
-${targetAI === 'gemini' ? `- Çok yönlü analiz iste
-- Görsel düşünmeyi dahil et
-- Karşılaştırmalı yaklaşım öner
-- Farklı perspektifler sun` : ''}
-
-### 4. DİL
-${langInstruction}
-
-## ÖNEMLİ
-- SADECE promptu döndür
-- Açıklama, giriş, sonuç YAZMA
-- "İşte prompt" gibi ifadeler KULLANMA
-- Direkt prompt ile başla
+KULLANICI NE İSTİYOR: "${userRequest}"
+HEDEF AI: ${targetAI}
+KATEGORİ: ${categoryName}
 ${fileContext}
 
-Şimdi bu kullanıcı isteği için MÜKEMMEL bir prompt oluştur:`;
+PROMPT OLUŞTURMA KURALLARI (KESİNLİKLE UY):
 
-    // Try Gemini first
-    try {
-        const geminiResponse = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-            {
+1. ASLA kullanıcının isteğini direkt yerine getirme! 
+   - Örnek: "Şiir yaz" derse şiir yazma, şiir yazdıracak PROMPT'u yaz.
+   - Örnek: "E-posta yaz" derse e-posta yazma, e-posta yazdıracak PROMPT'u yaz.
+
+2. Çıktın SADECE ve SADECE prompt metni olmalı.
+   - Sohbet etme
+   - "Merhaba" deme
+   - "İşte promptun" deme
+   - "Tabii" deme
+   - Açıklama yapma
+   - Direkt prompt ile başla
+
+3. PROMPT YAPISI (Bu formatta yaz):
+   
+   🎭 ROL: Sen [detaylı uzman rolü]...
+   
+   🎯 GÖREV: [Spesifik, ölçülebilir görev tanımı]
+   
+   📋 BAĞLAM: [Durum, hedef kitle, amaç]
+   
+   📝 TALİMATLAR:
+   1. [Birinci adım]
+   2. [İkinci adım]
+   3. [Üçüncü adım]
+   ...
+   
+   ⚠️ KISITLAMALAR:
+   - [Yapılmaması gereken 1]
+   - [Yapılmaması gereken 2]
+   
+   📤 ÇIKTI FORMATI: [Beklenen format, uzunluk, stil]
+
+4. ${langText}
+
+5. ${targetAI.toUpperCase()} İÇİN OPTİMİZE ET:
+${targetAI === 'claude' ? '   - Yapılandırılmış, detaylı talimatlar\n   - Belirsizliklerde soru sormasını söyle' : ''}
+${targetAI === 'chatgpt' ? '   - Doğal, akıcı dil\n   - Markdown formatı öner' : ''}
+${targetAI === 'gemini' ? '   - Çok yönlü analiz\n   - Farklı perspektifler' : ''}
+
+6. Prompt PROFESYONEL, DETAYLI ve ETKİLİ olmalı.
+
+ŞİMDİ SADECE PROMPT METNİNİ YAZ:`;
+
+        // 1. ÖNCE GEMİNİ DENE
+        try {
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     contents: [{
-                        parts: [{
-                            text: `${systemPrompt}\n\nKullanıcı İsteği: ${userRequest}`
-                        }]
+                        parts: [{ text: engineeringPrompt }]
                     }],
                     generationConfig: {
                         temperature: 0.8,
                         maxOutputTokens: 4096
                     }
                 })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok && data.candidates?.[0]?.content?.parts?.[0]?.text) {
+                const resultText = data.candidates[0].content.parts[0].text;
+                return res.status(200).json({ 
+                    prompt: resultText, 
+                    provider: 'gemini' 
+                });
             }
-        );
+        } catch (e) {
+            console.log('Gemini failed:', e.message);
+        }
 
-        if (geminiResponse.ok) {
-            const data = await geminiResponse.json();
-            const prompt = data.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (prompt) {
-                return res.status(200).json({ prompt, provider: 'gemini' });
+        // 2. GEMİNİ BAŞARISIZ - DEEPSEEK DENE
+        if (DEEPSEEK_KEY) {
+            try {
+                const response = await fetch('https://api.deepseek.com/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${DEEPSEEK_KEY}`
+                    },
+                    body: JSON.stringify({
+                        model: 'deepseek-chat',
+                        messages: [
+                            { role: 'system', content: 'Sen profesyonel bir prompt mühendisisin. Sadece prompt metni döndür, başka hiçbir şey yazma.' },
+                            { role: 'user', content: engineeringPrompt }
+                        ],
+                        temperature: 0.8,
+                        max_tokens: 4096
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.choices?.[0]?.message?.content) {
+                    return res.status(200).json({ 
+                        prompt: data.choices[0].message.content, 
+                        provider: 'deepseek' 
+                    });
+                }
+            } catch (e) {
+                console.log('DeepSeek failed:', e.message);
             }
         }
-    } catch (e) {
-        console.log('Gemini failed:', e.message);
-    }
 
-    // Try DeepSeek second
-    try {
-        const deepseekResponse = await fetch('https://api.deepseek.com/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`
-            },
-            body: JSON.stringify({
-                model: 'deepseek-chat',
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: userRequest }
-                ],
-                temperature: 0.8,
-                max_tokens: 4096
-            })
+        // 3. DEEPSEEK BAŞARISIZ - OPENAI DENE
+        if (OPENAI_KEY) {
+            try {
+                const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${OPENAI_KEY}`
+                    },
+                    body: JSON.stringify({
+                        model: 'gpt-3.5-turbo',
+                        messages: [
+                            { role: 'system', content: 'Sen profesyonel bir prompt mühendisisin. Sadece prompt metni döndür, başka hiçbir şey yazma.' },
+                            { role: 'user', content: engineeringPrompt }
+                        ],
+                        temperature: 0.8,
+                        max_tokens: 4096
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.choices?.[0]?.message?.content) {
+                    return res.status(200).json({ 
+                        prompt: data.choices[0].message.content, 
+                        provider: 'openai' 
+                    });
+                }
+            } catch (e) {
+                console.log('OpenAI failed:', e.message);
+            }
+        }
+
+        // HİÇBİRİ ÇALIŞMADI
+        throw new Error("Tüm AI servisleri şu an meşgul");
+        
+    } catch (error) {
+        return res.status(200).json({ 
+            prompt: "⚠️ Hata: " + error.message,
+            provider: 'error'
         });
-
-        if (deepseekResponse.ok) {
-            const data = await deepseekResponse.json();
-            const prompt = data.choices?.[0]?.message?.content;
-            if (prompt) {
-                return res.status(200).json({ prompt, provider: 'deepseek' });
-            }
-        }
-    } catch (e) {
-        console.log('DeepSeek failed:', e.message);
     }
-
-    // Fallback to OpenAI
-    try {
-        const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-            },
-            body: JSON.stringify({
-                model: 'gpt-3.5-turbo',
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: userRequest }
-                ],
-                temperature: 0.8,
-                max_tokens: 4096
-            })
-        });
-
-        if (openaiResponse.ok) {
-            const data = await openaiResponse.json();
-            const prompt = data.choices?.[0]?.message?.content;
-            if (prompt) {
-                return res.status(200).json({ prompt, provider: 'openai' });
-            }
-        }
-    } catch (e) {
-        console.log('OpenAI failed:', e.message);
-    }
-
-    return res.status(500).json({ error: 'Tüm AI servisleri şu an meşgul. Lütfen biraz sonra tekrar deneyin.' });
 }
