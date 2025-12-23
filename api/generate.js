@@ -1,5 +1,5 @@
 export default async function handler(req, res) {
-    // 1. Standart Ayarlar
+    // 1. Ayarlar
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -13,74 +13,50 @@ export default async function handler(req, res) {
         
         if (!GEMINI_KEY) throw new Error("API Anahtarı eksik.");
 
-        // 1. ADIM: GOOGLE'A SOR - "ELİNDE HANGİ MODELLER VAR?"
-        // Ezbere isim yazmıyoruz, listeden çekiyoruz.
+        // 1. ADIM: ÇALIŞAN MODELİ BUL (Auto-Pilot)
+        // Burası harika çalışıyor, dokunmuyoruz.
         const listResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_KEY}`);
         const listData = await listResponse.json();
 
-        if (!listResponse.ok) {
-            throw new Error("Model listesi alınamadı: " + (listData.error?.message || "Bilinmeyen hata"));
-        }
+        if (!listResponse.ok) throw new Error("Model listesi alınamadı.");
 
-        // 2. ADIM: ÇALIŞAN MODELİ SEÇ
-        // Listeden "generateContent" özelliğine sahip modelleri bul.
-        // Öncelik: Flash > Pro > Diğerleri
-        let validModel = null;
-        
-        const preferredOrder = ['flash', 'pro', 'gemini-1.5', 'gemini-1.0'];
-        
-        // Tüm modelleri tara
-        const availableModels = listData.models.filter(m => 
-            m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent")
-        );
+        // Modelleri filtrele (flash veya pro)
+        const availableModels = listData.models.filter(m => m.supportedGenerationMethods?.includes("generateContent"));
+        let validModel = availableModels.find(m => m.name.includes('flash')) || 
+                         availableModels.find(m => m.name.includes('pro')) || 
+                         availableModels[0];
 
-        // Tercih sırasına göre en iyisini seç
-        for (const pref of preferredOrder) {
-            validModel = availableModels.find(m => m.name.toLowerCase().includes(pref));
-            if (validModel) break;
-        }
-
-        // Eğer tercih edilen yoksa, listedeki ilk çalışanı al
-        if (!validModel && availableModels.length > 0) {
-            validModel = availableModels[0];
-        }
-
-        if (!validModel) {
-            throw new Error("Hesabına tanımlı, metin üretebilen hiçbir model bulunamadı.");
-        }
-
-        console.log("Seçilen Model:", validModel.name); // Loglarda görebilirsin
-
-        // 3. ADIM: SEÇİLEN MODELLE PROMPT ÜRET
-        const langText = language === 'en' ? 'English' : 'Türkçe';
-        const fileInfo = fileContent ? `\n\n[EK DOSYA]:\n${fileContent}` : '';
-
-        const systemPrompt = `
-            GÖREV: Profesyonel Prompt Yazarı.
-            KATEGORİ: ${categoryName}
-            İSTEK: "${userRequest}"
-            HEDEF AI: ${targetAI}
-            DİL: ${langText}
-            ${fileInfo}
-            KURAL: Sadece prompt metnini ver. Sohbet etme.
-        `;
-
-        // Bulduğumuz "validModel.name" (örn: models/gemini-1.5-flash-001) direkt kullanılır.
-        // Başındaki 'models/' kısmını API bazen istemez, bazen ister. URL yapısına göre ayarlıyoruz.
-        // v1beta url'si: .../models/gemini-pro:generateContent şeklindedir.
-        // validModel.name zaten "models/..." diye gelir.
-        
-        // Model adını temizle (models/ kısmını at, çünkü URL'e kendimiz ekleyebiliriz veya olduğu gibi kullanırız)
-        // Google API URL yapısı: models/{model_id}:generateContent
+        if (!validModel) throw new Error("Hiçbir model bulunamadı.");
         const modelId = validModel.name.replace('models/', '');
 
+        // 2. ADIM: PROMPT MÜHENDİSLİĞİ (BURAYI GÜÇLENDİRDİK)
+        // Artık "Ben çizemem" diyemeyecek.
+        const langText = language === 'en' ? 'English' : 'Türkçe';
+        const fileInfo = fileContent ? `\n\n[İÇERİK KAYNAĞI OLARAK BU DOSYAYI KULLAN]:\n${fileContent}` : '';
+
+        const systemPrompt = `
+            ROL: Sen bir "Prompt Oluşturma Motorusun". ASLA bir sohbet botu veya asistan gibi davranma.
+            GÖREV: Kullanıcının isteğini, ${targetAI} yapay zekasına girilecek PROFESYONEL VE DETAYLI BİR PROMPT (KOMUT) haline getir.
+
+            KULLANICI: "${userRequest}"
+            
+            KURALLAR (KESİN UY):
+            1. Kullanıcı "Beni çiz" derse, ona resim çizemeyeceğini söyleme. Bunun yerine, bir yapay zekanın (Midjourney/DALL-E) bir insanı çizmesini sağlayacak detaylı bir "Görsel Tasvir Promptu" yaz.
+            2. Kullanıcı "Kod yaz" derse, kodu yazma. Kodu yazdıracak promptu hazırla.
+            3. Çıktın SADECE oluşturduğun prompt metni olsun. Başka hiçbir giriş/gelişme cümlesi ("İşte promptunuz", "Harika fikir" vb.) YAZMA.
+            4. Hedef Dil: ${langText}
+            5. Kategori: ${categoryName}
+            ${fileInfo}
+        `;
+
+        // 3. ADIM: İSTEĞİ GÖNDER
         let response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${GEMINI_KEY}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt }] }] })
         });
 
-        // Kota hatası (429) gelirse 4 saniye bekle tekrar dene
+        // Kota kontrolü (429 Hatası)
         if (response.status === 429) {
             await new Promise(resolve => setTimeout(resolve, 4000));
             response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${GEMINI_KEY}`, {
@@ -92,13 +68,9 @@ export default async function handler(req, res) {
 
         const data = await response.json();
 
-        if (!response.ok) {
-            throw new Error(data.error?.message || "Üretim Hatası");
-        }
+        if (!response.ok) throw new Error(data.error?.message || "Hata oluştu");
 
         const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-        if (!resultText) throw new Error("Model boş cevap döndürdü.");
 
         return res.status(200).json({ 
             prompt: resultText, 
@@ -106,9 +78,6 @@ export default async function handler(req, res) {
         });
 
     } catch (error) {
-        return res.status(200).json({ 
-            prompt: "⚠️ HATA: " + error.message,
-            error: error.message 
-        });
+        return res.status(200).json({ prompt: "⚠️ HATA: " + error.message, error: error.message });
     }
 }
