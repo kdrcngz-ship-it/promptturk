@@ -1,94 +1,61 @@
-export default async function handler(req, res) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+from http.server import BaseHTTPRequestHandler
+import json
+import os
+import google.generativeai as genai
 
-    if (req.method === 'OPTIONS') return res.status(200).end();
+class handler(BaseHTTPRequestHandler):
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
 
-    const GEMINI_KEY = process.env.GEMINI_API_KEY;
+    def do_POST(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
 
-    try {
-        const { category, categoryName, userRequest, targetAI, language, fileContent } = req.body;
-        
-        if (!GEMINI_KEY) throw new Error("API Anahtarı eksik.");
+        try:
+            # 1. Veriyi Al
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data.decode('utf-8'))
 
-        // 1. PROMPT AYARI (Sert ve Net)
-        const langText = language === 'en' ? 'English' : 'Türkçe';
-        const fileInfo = fileContent ? `\n[DOSYA]:\n${fileContent}` : '';
+            # 2. API Key Kontrolü
+            api_key = os.environ.get("GOOGLE_API_KEY")
+            if not api_key:
+                raise Exception("Vercel'de GOOGLE_API_KEY ayarlı değil!")
 
-        const systemPrompt = `
-            GÖREV: Sen bir Prompt Motorusun.
-            AMAÇ: Kullanıcının isteğini ${targetAI} için en iyi komuta çevirmek.
-            İSTEK: "${userRequest}"
-            KATEGORİ: ${categoryName}
-            DİL: ${langText}
-            ${fileInfo}
+            genai.configure(api_key=api_key)
 
-            ❌ YASAKLAR:
-            - Sohbet yok. "İşte prompt" demek yok. Açıklama yok.
+            # 3. MODEL SEÇİMİ (DÜZELTİLDİ: gemini-2.5-flash)
+            # Sen haklıydın, modelin adı tam olarak bu.
+            model = genai.GenerativeModel('gemini-2.5-flash')
+            
+            user_req = data.get('userRequest', '')
+            category = data.get('category', 'Genel')
+            
+            # 4. Promptu Çak
+            prompt = f"""
+            Sen profesyonel bir Prompt Mühendisisin.
+            Kullanıcı İsteği: {user_req}
+            Kategori: {category}
+            
+            Görevin: Bu isteği en iyi sonucu verecek profesyonel bir AI promptuna dönüştür.
+            Sadece promptu yaz, açıklama yapma.
+            """
 
-            ✅ YAPILACAK:
-            - Sadece ${targetAI} yapay zekasına yapıştırılacak net, detaylı prompt metnini ver.
-        `;
+            # 5. İsteği Gönder
+            response = model.generate_content(prompt)
+            
+            # 6. Cevabı Yaz
+            response_data = json.dumps({"prompt": response.text})
+            self.wfile.write(response_data.encode('utf-8'))
 
-        // 2. MODEL LİSTESİ (Senin isteğin EN BAŞTA)
-        // Kod sırayla dener. İlk hedef: 2.5 Flash.
-        const models = [
-            'gemini-2.5-flash',       // SENİN İSTEDİĞİN (Varsa çalışır)
-            'gemini-1.5-flash',       // Garantisi olan (2.5 yoksa buraya düşer)
-            'gemini-1.5-flash-latest',
-            'gemini-pro'
-        ];
-
-        let resultText = null;
-        let activeModel = "";
-        let lastError = "";
-
-        // Döngü: Sırayla dener
-        for (const model of models) {
-            try {
-                // Model ismini API'ye uygun hale getir (models/gemini... formatı gerekebilir)
-                // Ama biz direkt ismi veriyoruz, API url'i hallediyor.
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt }] }] })
-                });
-
-                // Kota hatası (429) gelirse bekle tekrarla
-                if (response.status === 429) {
-                    await new Promise(r => setTimeout(r, 2000));
-                    // Döngüdeki aynı model için tekrar denemek yerine, basitlik için pas geçip sonrakine de gidebilir
-                    // Ama burada basitçe devam edelim.
-                }
-
-                const data = await response.json();
-
-                if (response.ok && data.candidates?.length > 0) {
-                    resultText = data.candidates[0].content.parts[0].text;
-                    activeModel = model;
-                    break; // Bulduk, çık!
-                } else {
-                    lastError = data.error?.message;
-                }
-            } catch (e) {
-                lastError = e.message;
-            }
-        }
-
-        if (resultText) {
-            return res.status(200).json({ 
-                prompt: resultText, 
-                provider: 'gemini (' + activeModel + ')' 
-            });
-        } else {
-            throw new Error(`Hiçbir model (2.5 dahil) çalışmadı. Son hata: ${lastError}`);
-        }
-
-    } catch (error) {
-        return res.status(200).json({ 
-            prompt: "⚠️ HATA: " + error.message, 
-            error: error.message 
-        });
-    }
-}
+        except Exception as e:
+            # Hata durumunda log bas ve cevabı dön
+            error_msg = str(e)
+            print(f"HATA: {error_msg}")
+            self.wfile.write(json.dumps({"error": f"Hata: {error_msg}"}).encode('utf-8'))
