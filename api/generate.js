@@ -1,5 +1,4 @@
 export default async function handler(req, res) {
-    // 1. Ayarlar
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -13,40 +12,49 @@ export default async function handler(req, res) {
         
         if (!GEMINI_KEY) throw new Error("API Anahtarı eksik.");
 
-        // 1. ADIM: ÇALIŞAN MODELİ BUL (Auto-Pilot)
-        // Burası harika çalışıyor, dokunmuyoruz.
+        // 1. ADIM: ÇALIŞAN MODELİ BUL (Auto-Pilot - Dokunmuyoruz, bu iyi çalışıyor)
         const listResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_KEY}`);
         const listData = await listResponse.json();
-
         if (!listResponse.ok) throw new Error("Model listesi alınamadı.");
 
-        // Modelleri filtrele (flash veya pro)
         const availableModels = listData.models.filter(m => m.supportedGenerationMethods?.includes("generateContent"));
-        let validModel = availableModels.find(m => m.name.includes('flash')) || 
-                         availableModels.find(m => m.name.includes('pro')) || 
+        let validModel = availableModels.find(m => m.name.includes('gemini-1.5-pro')) || 
+                         availableModels.find(m => m.name.includes('gemini-pro')) || 
+                         availableModels.find(m => m.name.includes('flash')) ||
                          availableModels[0];
 
-        if (!validModel) throw new Error("Hiçbir model bulunamadı.");
+        if (!validModel) throw new Error("Model bulunamadı.");
         const modelId = validModel.name.replace('models/', '');
 
-        // 2. ADIM: PROMPT MÜHENDİSLİĞİ (BURAYI GÜÇLENDİRDİK)
-        // Artık "Ben çizemem" diyemeyecek.
+
+        // 2. ADIM: PROMPT MÜHENDİSLİĞİ (BURAYI DEĞİŞTİRDİK - SERT AYAR)
         const langText = language === 'en' ? 'English' : 'Türkçe';
-        const fileInfo = fileContent ? `\n\n[İÇERİK KAYNAĞI OLARAK BU DOSYAYI KULLAN]:\n${fileContent}` : '';
+        const fileInfo = fileContent ? `\n[REFERANS İÇERİK]:\n${fileContent}` : '';
 
         const systemPrompt = `
-            ROL: Sen bir "Prompt Oluşturma Motorusun". ASLA bir sohbet botu veya asistan gibi davranma.
-            GÖREV: Kullanıcının isteğini, ${targetAI} yapay zekasına girilecek PROFESYONEL VE DETAYLI BİR PROMPT (KOMUT) haline getir.
+            SEN BİR "PROMPT ÜRETİCİSİSİN". 
+            GÖREVİN: Kullanıcının isteğini, ${targetAI} yapay zekasına "YAPIŞTIRILMAYA HAZIR" bir komuta dönüştürmek.
 
-            KULLANICI: "${userRequest}"
-            
-            KURALLAR (KESİN UY):
-            1. Kullanıcı "Beni çiz" derse, ona resim çizemeyeceğini söyleme. Bunun yerine, bir yapay zekanın (Midjourney/DALL-E) bir insanı çizmesini sağlayacak detaylı bir "Görsel Tasvir Promptu" yaz.
-            2. Kullanıcı "Kod yaz" derse, kodu yazma. Kodu yazdıracak promptu hazırla.
-            3. Çıktın SADECE oluşturduğun prompt metni olsun. Başka hiçbir giriş/gelişme cümlesi ("İşte promptunuz", "Harika fikir" vb.) YAZMA.
-            4. Hedef Dil: ${langText}
-            5. Kategori: ${categoryName}
+            KULLANICI İSTEĞİ: "${userRequest}"
+            HEDEF DİL: ${langText}
+            KATEGORİ: ${categoryName}
             ${fileInfo}
+
+            ❌ YASAKLAR (BUNLARI ASLA YAPMA):
+            - "Bunu yapmak için şöyle bir prompt kullanabilirsin" deme.
+            - "Prompt şu maddeleri içermelidir" diye ders anlatma.
+            - Tırnak işareti içine alma.
+            - Başlık atma ("İşte promptunuz:" vb. deme).
+
+            ✅ YAPMAN GEREKEN (KESİN UYGULA):
+            - Doğrudan yapay zekaya (ChatGPT/Gemini/Claude) verilecek rolü ve görevi yaz.
+            - Çıktın, kullanıcının kopyalayıp direkt yapıştıracağı metin olmalı.
+
+            ÖRNEK SENARYO:
+            Kullanıcı: "Osmanlı tarihi tezi"
+            Senin Çıktın: "Sen uzman bir tarih profesörüsün. Osmanlı İmparatorluğu'nun yükseliş ve çöküş dönemlerini ele alan, akademik dilde yazılmış, 5000 kelimelik, kaynakçalı detaylı bir tez taslağı hazırla. Şu başlıkları mutlaka içersin: ..."
+            
+            ŞİMDİ YAZ:
         `;
 
         // 3. ADIM: İSTEĞİ GÖNDER
@@ -56,7 +64,7 @@ export default async function handler(req, res) {
             body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt }] }] })
         });
 
-        // Kota kontrolü (429 Hatası)
+        // Kota Engeli Aşma (429)
         if (response.status === 429) {
             await new Promise(resolve => setTimeout(resolve, 4000));
             response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${GEMINI_KEY}`, {
@@ -67,17 +75,13 @@ export default async function handler(req, res) {
         }
 
         const data = await response.json();
-
         if (!response.ok) throw new Error(data.error?.message || "Hata oluştu");
 
         const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
-        return res.status(200).json({ 
-            prompt: resultText, 
-            provider: 'gemini (' + modelId + ')' 
-        });
+        return res.status(200).json({ prompt: resultText, provider: 'gemini' });
 
     } catch (error) {
-        return res.status(200).json({ prompt: "⚠️ HATA: " + error.message, error: error.message });
+        return res.status(200).json({ prompt: "HATA: " + error.message, error: true });
     }
 }
