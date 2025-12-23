@@ -17,8 +17,8 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
 
         try:
-            # SENİN VERDİĞİN OPENAI ANAHTARI
-            api_key = "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"
+            # SENİN YENİ ANAHTARIN (Kodun içine gömüldü)
+            api_key = "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"
 
             client = OpenAI(api_key=api_key)
 
@@ -30,11 +30,10 @@ class handler(BaseHTTPRequestHandler):
             category = data.get('category', 'Genel')
             language = data.get('language', 'tr')
 
-            # GPT'ye giden emir
             system_msg = f"Sen uzman bir Prompt Mühendisisin. Görevin, kullanıcı isteğini TAMAMEN {language} dilinde profesyonel bir yapay zeka promptuna dönüştürmektir. Sadece promptu yaz, açıklama yapma."
             user_msg = f"Kategori: {category}. İstek: {user_req}"
 
-            # MODEL: gpt-4o-mini (Hızlı ve Güçlü)
+            # GPT-4o-mini Modeli (Hızlı ve Zeki)
             completion = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
