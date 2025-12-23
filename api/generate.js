@@ -1,5 +1,4 @@
 export default async function handler(req, res) {
-    // 1. Standart Ayarlar
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -13,82 +12,80 @@ export default async function handler(req, res) {
         
         if (!GEMINI_KEY) throw new Error("API Anahtarı eksik.");
 
-        // 2. PROMPT MÜHENDİSLİĞİ (Senin istediğin 'Net ve Detaylı' ayarı)
+        // 1. PROMPT AYARI (Sert ve Net)
         const langText = language === 'en' ? 'English' : 'Türkçe';
-        const fileInfo = fileContent ? `\n[REFERANS DOSYA İÇERİĞİ]:\n${fileContent}\n(Bu içeriği analiz et ve prompta dahil et)` : '';
+        const fileInfo = fileContent ? `\n[DOSYA]:\n${fileContent}` : '';
 
         const systemPrompt = `
-            GÖREV: Sen dünyanın en iyi "Prompt Mühendisisin".
-            AMACIN: Kullanıcının isteğini, ${targetAI} yapay zekasından EN İYİ sonucu alacak, DETAYLI, ZENGİN ve PROFESYONEL bir komuta (prompt) dönüştürmek.
-
-            KULLANICI İSTEĞİ: "${userRequest}"
+            GÖREV: Sen bir Prompt Motorusun.
+            AMAÇ: Kullanıcının isteğini ${targetAI} için en iyi komuta çevirmek.
+            İSTEK: "${userRequest}"
             KATEGORİ: ${categoryName}
-            HEDEF DİL: ${langText}
+            DİL: ${langText}
             ${fileInfo}
 
-            KURALLAR (KESİN UY):
-            1. ASLA sohbet etme ("Tabii hazırlarım", "İşte promptunuz" vb. DEME).
-            2. Çıktın SADECE ve SADECE kopyalanacak prompt metni olsun.
-            3. Prompt "kısa ve öz" DEĞİL, "detaylı ve açıklayıcı" olsun. 
-               - Görselse: Işık, atmosfer, stil, lens, çözünürlük detaylarını ekle.
-               - Metinse: Ton, hedef kitle, format, yapı detaylarını ekle.
-            4. Sonuç doğrudan kullanılabilir ham metin olmalı.
+            ❌ YASAKLAR:
+            - Sohbet yok. "İşte prompt" demek yok. Açıklama yok.
+
+            ✅ YAPILACAK:
+            - Sadece ${targetAI} yapay zekasına yapıştırılacak net, detaylı prompt metnini ver.
         `;
 
-        // 3. MODEL SEÇİMİ (ZİNCİRLEME SİSTEM)
-        // Senin istediğin "Flash" modelini dener. Olmazsa Pro'ya geçer. Yolda bırakmaz.
-        const modelsToTry = [
-            'gemini-1.5-flash',       // Öncelik: En hızlı ve yeni olan
-            'gemini-1.5-flash-latest',// Alternatif isimlendirme
-            'gemini-pro',             // Yedek: Eski ama %100 çalışan tank
+        // 2. MODEL LİSTESİ (Senin isteğin EN BAŞTA)
+        // Kod sırayla dener. İlk hedef: 2.5 Flash.
+        const models = [
+            'gemini-2.5-flash',       // SENİN İSTEDİĞİN (Varsa çalışır)
+            'gemini-1.5-flash',       // Garantisi olan (2.5 yoksa buraya düşer)
+            'gemini-1.5-flash-latest',
+            'gemini-pro'
         ];
 
         let resultText = null;
+        let activeModel = "";
         let lastError = "";
 
-        // Döngü: Sırayla modelleri dener
-        for (const model of modelsToTry) {
+        // Döngü: Sırayla dener
+        for (const model of models) {
             try {
+                // Model ismini API'ye uygun hale getir (models/gemini... formatı gerekebilir)
+                // Ama biz direkt ismi veriyoruz, API url'i hallediyor.
                 const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt }] }] })
                 });
 
-                // Kota hatası (429) varsa 2 saniye bekle tekrar dene
+                // Kota hatası (429) gelirse bekle tekrarla
                 if (response.status === 429) {
                     await new Promise(r => setTimeout(r, 2000));
-                    // Aynı isteği tekrarla
-                    continue; 
+                    // Döngüdeki aynı model için tekrar denemek yerine, basitlik için pas geçip sonrakine de gidebilir
+                    // Ama burada basitçe devam edelim.
                 }
 
                 const data = await response.json();
 
-                if (response.ok && data.candidates && data.candidates.length > 0) {
+                if (response.ok && data.candidates?.length > 0) {
                     resultText = data.candidates[0].content.parts[0].text;
-                    break; // Başarılı! Döngüden çık.
+                    activeModel = model;
+                    break; // Bulduk, çık!
                 } else {
-                    lastError = data.error?.message || "Bilinmeyen Hata";
-                    console.log(`${model} olmadı, sıradakine geçiliyor...`);
+                    lastError = data.error?.message;
                 }
-            } catch (err) {
-                lastError = err.message;
+            } catch (e) {
+                lastError = e.message;
             }
         }
 
-        // 4. SONUÇ
         if (resultText) {
             return res.status(200).json({ 
                 prompt: resultText, 
-                provider: 'gemini-intelligent' 
+                provider: 'gemini (' + activeModel + ')' 
             });
         } else {
-            // Hiçbiri çalışmadıysa
-            throw new Error(`Google API Hatası: ${lastError}`);
+            throw new Error(`Hiçbir model (2.5 dahil) çalışmadı. Son hata: ${lastError}`);
         }
 
     } catch (error) {
-        // Hata mesajını frontend'e gönder
         return res.status(200).json({ 
             prompt: "⚠️ HATA: " + error.message, 
             error: error.message 
