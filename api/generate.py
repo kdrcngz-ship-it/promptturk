@@ -17,29 +17,26 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
 
         try:
-            # SENİN VERDİĞİN API KEY BURAYA GÖMÜLDÜ
+            # SENİN VERDİĞİN API KEY - DOKUNMA
             api_key = "AIzaSyC4P18pAnup5IC6NIbBgv1OT_5kqc5rQaE"
 
             genai.configure(api_key=api_key)
             
-            # En stabil ve hızlı çalışan model budur. 
-            # Eğer hata alırsan requirements.txt dosyasını güncellediğinden emin ol.
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            # MODEL: GEMINI 2.5 FLASH
+            # Eğer yine hata alırsan 'gemini-1.5-flash' olarak değiştir.
+            model = genai.GenerativeModel('gemini-2.5-flash')
 
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
             data = json.loads(post_data.decode('utf-8'))
             
-            user_req = data.get('userRequest', '')
-            category = data.get('category', 'Genel')
-            
             prompt = f"""
             Sen uzman bir Prompt Mühendisisin.
-            Kullanıcı isteği: {user_req}
-            Kategori: {category}
+            Kullanıcı isteği: {data.get('userRequest', '')}
+            Kategori: {data.get('category', 'Genel')}
             
-            Görevin: Bu isteği, seçilen yapay zeka için mükemmel ve detaylı bir prompta dönüştür.
-            Sadece oluşturduğun promptu yaz, başına sonuna açıklama ekleme.
+            Görevin: Bu isteği profesyonel bir yapay zeka promptuna dönüştür.
+            Sadece promptu yaz.
             """
 
             response = model.generate_content(prompt)
