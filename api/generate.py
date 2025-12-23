@@ -17,26 +17,34 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
 
         try:
-            # SENİN VERDİĞİN API KEY - DOKUNMA
+            # SENİN API KEY (Dokunma)
             api_key = "AIzaSyC4P18pAnup5IC6NIbBgv1OT_5kqc5rQaE"
 
             genai.configure(api_key=api_key)
             
-            # MODEL: GEMINI 2.5 FLASH
-            # Eğer yine hata alırsan 'gemini-1.5-flash' olarak değiştir.
+            # Model 2.5 Flash
             model = genai.GenerativeModel('gemini-2.5-flash')
 
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
             data = json.loads(post_data.decode('utf-8'))
             
+            # BURASI DEĞİŞTİ: DİL BİLGİSİNİ ALIYORUZ
+            user_req = data.get('userRequest', '')
+            category = data.get('category', 'Genel')
+            language = data.get('language', 'tr') # Varsayılan Türkçe
+            
+            # Dili özellikle belirtiyoruz
             prompt = f"""
             Sen uzman bir Prompt Mühendisisin.
-            Kullanıcı isteği: {data.get('userRequest', '')}
-            Kategori: {data.get('category', 'Genel')}
             
-            Görevin: Bu isteği profesyonel bir yapay zeka promptuna dönüştür.
-            Sadece promptu yaz.
+            Kullanıcı İsteği: {user_req}
+            Kategori: {category}
+            Hedef Dil: {language} (Eğer 'tr' ise Türkçe, 'en' ise İngilizce yaz)
+            
+            Görevin: Bu isteği, TAMAMEN {language} dilinde profesyonel bir yapay zeka promptuna dönüştür.
+            Kullanıcı Türkçe istediyse kelimeler Türkçe olsun.
+            Sadece promptu yaz, açıklama yapma.
             """
 
             response = model.generate_content(prompt)
