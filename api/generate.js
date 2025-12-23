@@ -13,26 +13,7 @@ export default async function handler(req, res) {
         
         if (!GEMINI_KEY) throw new Error("API Anahtarı eksik.");
 
-        // 1. ADIM: OTO-PİLOT (Çalışan Modeli Bul)
-        const listResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_KEY}`);
-        const listData = await listResponse.json();
-        
-        // Eğer liste alınamazsa yedek model kullan
-        let modelId = 'gemini-1.5-flash';
-        
-        if (listResponse.ok && listData.models) {
-            const availableModels = listData.models.filter(m => m.supportedGenerationMethods?.includes("generateContent"));
-            // Sırayla en iyi modelleri ara
-            const validModel = availableModels.find(m => m.name.includes('gemini-1.5-pro')) || 
-                             availableModels.find(m => m.name.includes('gemini-pro')) || 
-                             availableModels.find(m => m.name.includes('flash')) ||
-                             availableModels[0];
-            if (validModel) {
-                modelId = validModel.name.replace('models/', '');
-            }
-        }
-
-        // 2. ADIM: "SADECE PROMPT" AYARI (Sert Talimatlar)
+        // 2. KESİN PROMPT AYARI (Sohbet etme, direkt ver)
         const langText = language === 'en' ? 'English' : 'Türkçe';
         const fileInfo = fileContent ? `\n[REFERANS İÇERİK]:\n${fileContent}` : '';
 
@@ -46,24 +27,27 @@ export default async function handler(req, res) {
             ${fileInfo}
 
             ❌ YASAKLAR:
-            - "Şöyle bir prompt kullanabilirsiniz" deme.
-            - "Bu prompt şunları içerir" deme.
-            - Başlık veya açıklama yazma.
-            - Tırnak içine alma.
+            - Sohbet etme.
+            - "İşte promptunuz" deme.
+            - Açıklama yapma.
 
             ✅ YAPMAN GEREKEN:
-            - Sadece ve sadece yapay zekaya verilecek rolü ve görevi yaz.
-            - Çıktı, kullanıcının CTRL+C yapıp alacağı ham metin olmalı.
+            - Sadece ve sadece yapay zekaya (ChatGPT/Gemini/Midjourney) verilecek emri yaz.
+            - Çıktı ham metin olmalı.
         `;
 
-        // 3. ADIM: İSTEĞİ GÖNDER
+        // 3. MODEL SEÇİMİ (MACERA YOK, GARANTİ MODEL)
+        // gemini-2.5 veya pro seçmiyoruz. Bedava planın kralı bu:
+        const modelId = 'gemini-1.5-flash'; 
+
+        // 4. İSTEĞİ GÖNDER
         let response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${GEMINI_KEY}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt }] }] })
         });
 
-        // Kota Engeli Aşma (429 Hatası)
+        // Kota Engeli Aşma (429 Hatası gelirse 4 saniye bekle tekrar dene)
         if (response.status === 429) {
             await new Promise(resolve => setTimeout(resolve, 4000));
             response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${GEMINI_KEY}`, {
@@ -76,6 +60,7 @@ export default async function handler(req, res) {
         const data = await response.json();
 
         if (!response.ok) {
+            // Hata detayını göster (true değil, mesajı bas)
             throw new Error(data.error?.message || "Google API Hatası");
         }
 
@@ -84,14 +69,14 @@ export default async function handler(req, res) {
         // Başarılı Sonuç
         return res.status(200).json({ 
             prompt: resultText, 
-            provider: 'gemini' 
+            provider: 'gemini-1.5-flash' 
         });
 
     } catch (error) {
-        // İŞTE DÜZELTME BURADA: Artık "true" değil, hatanın kendisini gönderiyoruz.
+        // HATA YÖNETİMİ
         return res.status(200).json({ 
             prompt: "⚠️ HATA: " + error.message, 
-            error: error.message // "true" yerine mesajın kendisi
+            error: error.message 
         });
     }
 }
