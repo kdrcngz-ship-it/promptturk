@@ -499,22 +499,18 @@
 
             <section class="library-section" id="library-section">
                 <div class="library-header">
-                    <div class="library-filters">
-                        <button class="filter-btn active" data-filter="all">Tümü</button>
-                        <button class="filter-btn" data-filter="popular">En Popüler</button>
-                        <button class="filter-btn" data-filter="newest">En Yeni</button>
-                    </div>
-                    <div class="search-box">
-                        <svg class="search-icon" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                        </svg>
-                        <input type="text" class="search-input" id="search-input" placeholder="Prompt ara...">
+                    <h2 style="font-size:24px; font-weight:700;">Keşfet</h2>
+                    <div class="library-actions">
+                        <button class="btn-share" id="share-btn" onclick="openShareModal()" style="display:none; align-items:center; gap:8px; background:var(--bg-card); border:1px solid var(--accent-primary); color:var(--accent-primary); padding:10px 20px; border-radius:10px; cursor:pointer; font-weight:600;">
+                            <span>➕</span> Prompt Paylaş
+                        </button>
                     </div>
                 </div>
-                <div class="prompts-grid" id="prompts-grid"></div>
-                <div class="leaderboard">
-                    <h3 class="leaderboard-title">🏆 Haftalık Lider Tablosu</h3>
-                    <div class="leaderboard-list" id="leaderboard-list"></div>
+                
+                <div class="prompts-grid" id="prompts-grid">
+                    <div style="text-align:center; grid-column:1/-1; padding:40px; color:var(--text-secondary);">
+                        Yükleniyor...
+                    </div>
                 </div>
             </section>
 
