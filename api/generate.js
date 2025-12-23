@@ -32,44 +32,49 @@ export default async function handler(req, res) {
             3. Çıktı sadece prompt olsun.
         `;
 
-        // 2. MODEL SEÇİMİ (En güvenli ve kotası bol olan model)
-        // Gemini 1.5 Flash, bedava planda en yüksek limite sahip modeldir.
+        // 2. MODEL SEÇİMİ (Garanti Model)
         const model = 'gemini-1.5-flash';
 
-        // 3. İSTEK GÖNDERME (Hata olursa tekrar dener)
-        let response = await sendToGoogle(model, GEMINI_KEY, systemPrompt);
+        // 3. İSTEK GÖNDERME
+        let response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt }] }] })
+        });
 
-        // Eğer kota hatası (429) alırsak, 4 saniye bekle ve tekrar dene
+        // KOTA DOLDUYSA (429) - 4 Saniye Bekle Tekrar Dene
         if (response.status === 429) {
-            console.log("Kota doldu, 4 saniye bekleniyor...");
             await new Promise(resolve => setTimeout(resolve, 4000));
-            response = await sendToGoogle(model, GEMINI_KEY, systemPrompt);
+            response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt }] }] })
+            });
         }
 
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.error?.message || "Google API Hatası");
+            // Hata mesajını string olarak hazırla
+            const errorMsg = data.error?.message || "Bilinmeyen Google Hatası";
+            throw new Error(errorMsg);
         }
 
         const resultText = data.candidates[0].content.parts[0].text;
         
-        return res.status(200).json({ prompt: resultText, provider: 'gemini' });
+        // BAŞARILI SONUÇ
+        return res.status(200).json({ 
+            prompt: resultText, // Ekrana bu basılacak
+            provider: 'gemini' 
+        });
 
     } catch (error) {
-        // Kullanıcıya hatayı düzgün göster
+        // HATA YAKALAMA (Artık 'true' yok, mesaj var)
+        const errorMessage = "⚠️ HATA OLUŞTU: " + error.message;
+        
         return res.status(200).json({ 
-            prompt: "⚠️ Google Kotası Doldu veya Hata Oluştu:\n" + error.message + "\n\n👉 Lütfen 10-15 saniye bekleyip tekrar dene.", 
-            error: true 
+            prompt: errorMessage, // Ön yüz 'prompt' ararsa bunu görecek
+            error: errorMessage   // Ön yüz 'error' ararsa bunu görecek (Boolean değil, yazı!)
         });
     }
-}
-
-// Yardımcı Fonksiyon: Google'a İstek Atar
-async function sendToGoogle(model, key, text) {
-    return fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: text }] }] })
-    });
 }
