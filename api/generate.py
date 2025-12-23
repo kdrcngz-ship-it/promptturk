@@ -18,9 +18,14 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
 
         try:
-            api_key = os.environ.get("GOOGLE_API_KEY")
-            if not api_key:
-                self.wfile.write(json.dumps({"error": "GOOGLE_API_KEY eksik!"}).encode('utf-8'))
+            # ---------------------------------------------------------
+            # BURAYA DİKKAT! Tırnakların içine AIza ile başlayan keyini yapıştır.
+            # Örnek: api_key = "AIzaSyBd7..." 
+            api_key = "AIzaSyC4P18pAnup5IC6NIbBgv1OT_5kqc5rQaE"
+            # ---------------------------------------------------------
+
+            if "BURAYA" in api_key or not api_key:
+                self.wfile.write(json.dumps({"error": "Kodun içine API Key yapıştırmayı unuttun!"}).encode('utf-8'))
                 return
 
             genai.configure(api_key=api_key)
