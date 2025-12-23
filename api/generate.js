@@ -37,7 +37,7 @@ export default async function handler(req, res) {
             'gemini-1.5-flash',       // En hızlı, en yeni
             'gemini-1.5-pro',         // En zeki
             'gemini-1.5-flash-8b',    // Alternatif hızlı
-            'gemini-pro'              // Eski ama sağlam (Legacy)
+            'gemini-2.0-flash'              // Eski ama sağlam (Legacy)
         ];
 
         let lastError = null;
