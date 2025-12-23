@@ -9,7 +9,7 @@ export default async function handler(req, res) {
     const GEMINI_KEY = process.env.GEMINI_API_KEY;
 
     try {
-        const { category, categoryName, userRequest, targetAI } = req.body;
+        const { category, categoryName, userRequest, targetAI, language } = req.body;
         
         if (!GEMINI_KEY) throw new Error("API Anahtarı eksik!");
 
@@ -26,7 +26,7 @@ export default async function handler(req, res) {
             2. Çıktın SADECE ve SADECE oluşturulacak prompt metni olmalı.
             3. Sohbet etme, "Merhaba" deme, "İşte promptun" deme. Sadece metni ver.
             4. Promptu şu formatta yaz: "Sen uzman bir [Rol]sun. [Görev] hakkında detaylı bilgi ver..."
-            5. Prompt Türkçe olsun.
+            5. ${language === 'en' ? 'Write the prompt in English.' : 'Prompt Türkçe olsun.'}
         `;
 
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`, {
