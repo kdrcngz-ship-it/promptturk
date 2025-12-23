@@ -1,4 +1,5 @@
 export default async function handler(req, res) {
+    // 1. Standart Ayarlar
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -12,49 +13,47 @@ export default async function handler(req, res) {
         
         if (!GEMINI_KEY) throw new Error("API Anahtarı eksik.");
 
-        // 1. ADIM: ÇALIŞAN MODELİ BUL (Auto-Pilot - Dokunmuyoruz, bu iyi çalışıyor)
+        // 1. ADIM: OTO-PİLOT (Çalışan Modeli Bul)
         const listResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_KEY}`);
         const listData = await listResponse.json();
-        if (!listResponse.ok) throw new Error("Model listesi alınamadı.");
+        
+        // Eğer liste alınamazsa yedek model kullan
+        let modelId = 'gemini-1.5-flash';
+        
+        if (listResponse.ok && listData.models) {
+            const availableModels = listData.models.filter(m => m.supportedGenerationMethods?.includes("generateContent"));
+            // Sırayla en iyi modelleri ara
+            const validModel = availableModels.find(m => m.name.includes('gemini-1.5-pro')) || 
+                             availableModels.find(m => m.name.includes('gemini-pro')) || 
+                             availableModels.find(m => m.name.includes('flash')) ||
+                             availableModels[0];
+            if (validModel) {
+                modelId = validModel.name.replace('models/', '');
+            }
+        }
 
-        const availableModels = listData.models.filter(m => m.supportedGenerationMethods?.includes("generateContent"));
-        let validModel = availableModels.find(m => m.name.includes('gemini-1.5-pro')) || 
-                         availableModels.find(m => m.name.includes('gemini-pro')) || 
-                         availableModels.find(m => m.name.includes('flash')) ||
-                         availableModels[0];
-
-        if (!validModel) throw new Error("Model bulunamadı.");
-        const modelId = validModel.name.replace('models/', '');
-
-
-        // 2. ADIM: PROMPT MÜHENDİSLİĞİ (BURAYI DEĞİŞTİRDİK - SERT AYAR)
+        // 2. ADIM: "SADECE PROMPT" AYARI (Sert Talimatlar)
         const langText = language === 'en' ? 'English' : 'Türkçe';
         const fileInfo = fileContent ? `\n[REFERANS İÇERİK]:\n${fileContent}` : '';
 
         const systemPrompt = `
-            SEN BİR "PROMPT ÜRETİCİSİSİN". 
-            GÖREVİN: Kullanıcının isteğini, ${targetAI} yapay zekasına "YAPIŞTIRILMAYA HAZIR" bir komuta dönüştürmek.
+            GÖREV: Sen bir "Prompt Oluşturma Motorusun".
+            AMACIN: Kullanıcının isteğini ${targetAI} yapay zekasına yapıştırılmaya hazır bir komuta çevirmek.
 
             KULLANICI İSTEĞİ: "${userRequest}"
-            HEDEF DİL: ${langText}
             KATEGORİ: ${categoryName}
+            HEDEF DİL: ${langText}
             ${fileInfo}
 
-            ❌ YASAKLAR (BUNLARI ASLA YAPMA):
-            - "Bunu yapmak için şöyle bir prompt kullanabilirsin" deme.
-            - "Prompt şu maddeleri içermelidir" diye ders anlatma.
-            - Tırnak işareti içine alma.
-            - Başlık atma ("İşte promptunuz:" vb. deme).
+            ❌ YASAKLAR:
+            - "Şöyle bir prompt kullanabilirsiniz" deme.
+            - "Bu prompt şunları içerir" deme.
+            - Başlık veya açıklama yazma.
+            - Tırnak içine alma.
 
-            ✅ YAPMAN GEREKEN (KESİN UYGULA):
-            - Doğrudan yapay zekaya (ChatGPT/Gemini/Claude) verilecek rolü ve görevi yaz.
-            - Çıktın, kullanıcının kopyalayıp direkt yapıştıracağı metin olmalı.
-
-            ÖRNEK SENARYO:
-            Kullanıcı: "Osmanlı tarihi tezi"
-            Senin Çıktın: "Sen uzman bir tarih profesörüsün. Osmanlı İmparatorluğu'nun yükseliş ve çöküş dönemlerini ele alan, akademik dilde yazılmış, 5000 kelimelik, kaynakçalı detaylı bir tez taslağı hazırla. Şu başlıkları mutlaka içersin: ..."
-            
-            ŞİMDİ YAZ:
+            ✅ YAPMAN GEREKEN:
+            - Sadece ve sadece yapay zekaya verilecek rolü ve görevi yaz.
+            - Çıktı, kullanıcının CTRL+C yapıp alacağı ham metin olmalı.
         `;
 
         // 3. ADIM: İSTEĞİ GÖNDER
@@ -64,7 +63,7 @@ export default async function handler(req, res) {
             body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt }] }] })
         });
 
-        // Kota Engeli Aşma (429)
+        // Kota Engeli Aşma (429 Hatası)
         if (response.status === 429) {
             await new Promise(resolve => setTimeout(resolve, 4000));
             response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${GEMINI_KEY}`, {
@@ -75,13 +74,24 @@ export default async function handler(req, res) {
         }
 
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error?.message || "Hata oluştu");
+
+        if (!response.ok) {
+            throw new Error(data.error?.message || "Google API Hatası");
+        }
 
         const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
-        return res.status(200).json({ prompt: resultText, provider: 'gemini' });
+        // Başarılı Sonuç
+        return res.status(200).json({ 
+            prompt: resultText, 
+            provider: 'gemini' 
+        });
 
     } catch (error) {
-        return res.status(200).json({ prompt: "HATA: " + error.message, error: true });
+        // İŞTE DÜZELTME BURADA: Artık "true" değil, hatanın kendisini gönderiyoruz.
+        return res.status(200).json({ 
+            prompt: "⚠️ HATA: " + error.message, 
+            error: error.message // "true" yerine mesajın kendisi
+        });
     }
 }
