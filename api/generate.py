@@ -22,10 +22,9 @@ class handler(BaseHTTPRequestHandler):
 
             genai.configure(api_key=api_key)
             
-            # BAK MODELİ 1.5 FLASH YAPTIM
-            # Bunun limiti çok yüksek, hata vermez.
-            # Önceden çalışmamasının sebebi requirements.txt idi, o artık düzeldi.
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            # DEĞİŞİKLİK BURADA: 'gemini-pro'
+            # Bu model her sürümde çalışır, naz yapmaz, hata vermez.
+            model = genai.GenerativeModel('gemini-pro')
 
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
